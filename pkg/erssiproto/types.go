@@ -1,7 +1,5 @@
 package erssiproto
 
-import "time"
-
 // MessageType represents erssi WebSocket message types (from fe-web.h)
 type MessageType int
 

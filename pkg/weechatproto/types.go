@@ -216,7 +216,8 @@ func (h HData) Encode(w io.Writer) error {
 	for _, item := range h.Items {
 		// Write pointers
 		for _, ptr := range item.Pointers {
-			if err := Pointer{Value: ptr}.Encode(w); err != nil {
+			p := Pointer{Value: ptr}
+			if err := p.Encode(w); err != nil {
 				return err
 			}
 		}

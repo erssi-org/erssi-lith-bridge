@@ -2,7 +2,6 @@ package translator
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
