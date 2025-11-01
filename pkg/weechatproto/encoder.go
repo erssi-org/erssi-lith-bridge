@@ -99,7 +99,13 @@ func CreateHandshakeResponse(id string, passwordHashAlgo string, nonce string) *
 }
 
 // CreateBuffersHData creates HData for buffer list
+// id can be empty for responses to hdata requests, or "_buffer_opened" for broadcasts
 func CreateBuffersHData(buffers []BufferData) *Message {
+	return CreateBuffersHDataWithID(buffers, "")
+}
+
+// CreateBuffersHDataWithID creates HData for buffer list with custom message ID
+func CreateBuffersHDataWithID(buffers []BufferData, id string) *Message {
 	items := make([]HDataItem, len(buffers))
 
 	for i, buf := range buffers {
@@ -117,7 +123,7 @@ func CreateBuffersHData(buffers []BufferData) *Message {
 	}
 
 	return &Message{
-		ID:          "",
+		ID:          id,
 		Compression: 0,
 		Data: []Object{
 			HData{
@@ -125,6 +131,27 @@ func CreateBuffersHData(buffers []BufferData) *Message {
 				Keys:  "number:int,name:str,short_name:str,hidden:int,title:str,local_variables:str",
 				Count: int32(len(items)),
 				Items: items,
+			},
+		},
+	}
+}
+
+// CreateEmptyHotlist creates an empty hotlist HData response
+func CreateEmptyHotlist() *Message {
+	return CreateEmptyHotlistWithID("")
+}
+
+// CreateEmptyHotlistWithID creates an empty hotlist HData response with custom message ID
+func CreateEmptyHotlistWithID(id string) *Message {
+	return &Message{
+		ID:          id,
+		Compression: 0,
+		Data: []Object{
+			HData{
+				Path:  "hotlist",
+				Keys:  "priority:int,date:tim,date_printed:tim,buffer:ptr,count:int",
+				Count: 0,              // Empty hotlist
+				Items: []HDataItem{}, // No items
 			},
 		},
 	}
@@ -143,26 +170,31 @@ type BufferData struct {
 
 // CreateLinesHData creates HData for buffer lines
 func CreateLinesHData(lines []LineData) *Message {
+	return CreateLinesHDataWithID(lines, "")
+}
+
+// CreateLinesHDataWithID creates HData for buffer lines with custom message ID
+func CreateLinesHDataWithID(lines []LineData, id string) *Message {
 	items := make([]HDataItem, len(lines))
 
 	for i, line := range lines {
 		items[i] = HDataItem{
 			Pointers: []string{line.Pointer},
 			Objects: map[string]Object{
-				"buffer":     Pointer{Value: line.BufferPtr},
-				"date":       Time{Value: line.Date},
+				"buffer":       Pointer{Value: line.BufferPtr},
+				"date":         Time{Value: line.Date},
 				"date_printed": Time{Value: line.DatePrinted},
-				"displayed":  Integer{Value: boolToInt(line.Displayed)},
-				"highlight":  Integer{Value: boolToInt(line.Highlight)},
-				"tags_array": NewString(line.Tags),
-				"prefix":     NewString(line.Prefix),
-				"message":    NewString(line.Message),
+				"displayed":    Integer{Value: boolToInt(line.Displayed)},
+				"highlight":    Integer{Value: boolToInt(line.Highlight)},
+				"tags_array":   NewString(line.Tags),
+				"prefix":       NewString(line.Prefix),
+				"message":      NewString(line.Message),
 			},
 		}
 	}
 
 	return &Message{
-		ID:          "",
+		ID:          id,
 		Compression: 0,
 		Data: []Object{
 			HData{

@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"strings"
 )
 
 // ObjectType represents WeeChat protocol object types
@@ -199,6 +200,27 @@ type HData struct {
 }
 
 func (h HData) Type() ObjectType { return TypeHData }
+
+// parseHDataKeys parses the keys string and returns field names in order
+// Keys format: "number:int,name:str,short_name:str,..."
+func parseHDataKeys(keys string) []string {
+	if keys == "" {
+		return nil
+	}
+
+	fields := strings.Split(keys, ",")
+	result := make([]string, 0, len(fields))
+
+	for _, field := range fields {
+		// Split by colon to get field name
+		parts := strings.Split(field, ":")
+		if len(parts) >= 1 {
+			result = append(result, parts[0])
+		}
+	}
+
+	return result
+}
 func (h HData) Encode(w io.Writer) error {
 	// Write hpath (path)
 	if err := NewString(h.Path).Encode(w); err != nil {
@@ -212,6 +234,9 @@ func (h HData) Encode(w io.Writer) error {
 	if err := binary.Write(w, binary.BigEndian, h.Count); err != nil {
 		return err
 	}
+	// Parse keys to get field names in correct order
+	keyFields := parseHDataKeys(h.Keys)
+
 	// Write items
 	for _, item := range h.Items {
 		// Write pointers
@@ -221,11 +246,14 @@ func (h HData) Encode(w io.Writer) error {
 				return err
 			}
 		}
-		// Write objects in key order
-		// TODO: Parse keys and write objects in correct order
-		for _, obj := range item.Objects {
+		// Write objects in the order specified by Keys
+		for _, keyName := range keyFields {
+			obj, exists := item.Objects[keyName]
+			if !exists {
+				return fmt.Errorf("missing required field in HData: %s", keyName)
+			}
 			if err := obj.Encode(w); err != nil {
-				return err
+				return fmt.Errorf("failed to encode field %s: %w", keyName, err)
 			}
 		}
 	}

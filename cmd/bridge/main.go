@@ -8,18 +8,34 @@ import (
 
 	"erssi-lith-bridge/internal/bridge"
 
+	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
 )
 
 var (
-	erssiURL      = flag.String("erssi", "ws://localhost:9001", "erssi WebSocket URL")
-	erssiPassword = flag.String("password", "", "erssi WebSocket password")
-	listenAddr    = flag.String("listen", ":9000", "WeeChat protocol listen address")
-	verbose       = flag.Bool("v", false, "Verbose logging")
+	erssiURL      *string
+	erssiPassword *string
+	listenAddr    *string
+	verbose       *bool
 	version       = "0.1.0"
 )
 
 func main() {
+	// Load .env file if it exists (ignore error if not found)
+	_ = godotenv.Load()
+
+	// Get defaults from environment variables or use hardcoded defaults
+	defaultErssiURL := getEnv("ERSSI_URL", "ws://localhost:9001")
+	defaultPassword := getEnv("ERSSI_PASSWORD", "")
+	defaultListen := getEnv("LISTEN_ADDR", ":9000")
+	defaultVerbose := getEnv("VERBOSE", "false") == "true"
+
+	// Define flags (these override environment variables)
+	erssiURL = flag.String("erssi", defaultErssiURL, "erssi WebSocket URL (env: ERSSI_URL)")
+	erssiPassword = flag.String("password", defaultPassword, "erssi WebSocket password (env: ERSSI_PASSWORD)")
+	listenAddr = flag.String("listen", defaultListen, "WeeChat protocol listen address (env: LISTEN_ADDR)")
+	verbose = flag.Bool("v", defaultVerbose, "Verbose logging (env: VERBOSE)")
+
 	flag.Parse()
 
 	// Setup logger
@@ -83,4 +99,12 @@ func waitForDone(b *bridge.Bridge) <-chan struct{} {
 		close(done)
 	}()
 	return done
+}
+
+// getEnv gets an environment variable with a fallback default value
+func getEnv(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
 }

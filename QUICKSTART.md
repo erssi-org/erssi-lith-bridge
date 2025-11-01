@@ -23,7 +23,27 @@ In your erssi IRC client:
 /save
 ```
 
-### 3. Start the Bridge
+### 3. Configure the Bridge
+
+**Option A: Using .env file (Recommended)**
+
+```bash
+# Copy example configuration
+cp .env.example .env
+
+# Edit .env with your settings
+nano .env
+```
+
+`.env` file contents:
+```bash
+ERSSI_URL=wss://your-server.com:9111
+ERSSI_PASSWORD=mypassword123
+LISTEN_ADDR=:9000
+VERBOSE=true
+```
+
+**Option B: Using command-line flags**
 
 ```bash
 ./erssi-lith-bridge \
@@ -31,6 +51,24 @@ In your erssi IRC client:
   -password mypassword123 \
   -listen :9000 \
   -v
+```
+
+**Option C: Using environment variables**
+
+```bash
+export ERSSI_URL=ws://localhost:9001
+export ERSSI_PASSWORD=mypassword123
+export LISTEN_ADDR=:9000
+export VERBOSE=true
+./erssi-lith-bridge
+```
+
+**Priority order**: CLI flags > Environment variables > .env file > Defaults
+
+### 4. Start the Bridge
+
+```bash
+./erssi-lith-bridge
 ```
 
 **Expected output**:
@@ -43,7 +81,7 @@ INFO[2025-10-31 07:17:00] Connected to erssi
 INFO[2025-10-31 07:17:00] Bridge running, press Ctrl+C to stop...
 ```
 
-### 4. Connect Lith
+### 5. Connect Lith
 
 **In Lith app**:
 - Host: `YOUR_SERVER_IP` (e.g., `192.168.1.100`)

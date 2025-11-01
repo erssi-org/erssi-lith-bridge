@@ -25,7 +25,7 @@ type Server struct {
 	clientsMu sync.RWMutex
 
 	// Message handlers
-	onCommand    func(*Client, string, []string)
+	onCommand    func(*Client, string, string, []string) // client, msgID, command, args
 	onClientConn func(*Client)
 	onClientDisc func(*Client)
 
@@ -69,7 +69,7 @@ func NewServer(cfg Config) *Server {
 }
 
 // OnCommand sets the command handler
-func (s *Server) OnCommand(handler func(*Client, string, []string)) {
+func (s *Server) OnCommand(handler func(*Client, string, string, []string)) {
 	s.onCommand = handler
 }
 
@@ -246,7 +246,7 @@ func (s *Server) handleInit(client *Client, msgID string, args []string) error {
 
 	// Call command handler to trigger initial state sync
 	if s.onCommand != nil {
-		go s.onCommand(client, "init", args)
+		go s.onCommand(client, msgID, "init", args)
 	}
 
 	return nil
@@ -260,7 +260,7 @@ func (s *Server) handleHData(client *Client, msgID string, args []string) error 
 
 	// Forward to command handler
 	if s.onCommand != nil {
-		go s.onCommand(client, "hdata", args)
+		go s.onCommand(client, msgID, "hdata", args)
 	}
 
 	return nil
@@ -274,7 +274,7 @@ func (s *Server) handleInput(client *Client, msgID string, args []string) error 
 
 	// Forward to command handler
 	if s.onCommand != nil {
-		go s.onCommand(client, "input", args)
+		go s.onCommand(client, msgID, "input", args)
 	}
 
 	return nil
@@ -288,7 +288,7 @@ func (s *Server) handleSync(client *Client, msgID string, args []string) error {
 
 	// Forward to command handler
 	if s.onCommand != nil {
-		go s.onCommand(client, "sync", args)
+		go s.onCommand(client, msgID, "sync", args)
 	}
 
 	return nil
@@ -302,7 +302,7 @@ func (s *Server) handleDesync(client *Client, msgID string, args []string) error
 
 	// Forward to command handler
 	if s.onCommand != nil {
-		go s.onCommand(client, "desync", args)
+		go s.onCommand(client, msgID, "desync", args)
 	}
 
 	return nil
@@ -316,7 +316,7 @@ func (s *Server) handleNicklist(client *Client, msgID string, args []string) err
 
 	// Forward to command handler
 	if s.onCommand != nil {
-		go s.onCommand(client, "nicklist", args)
+		go s.onCommand(client, msgID, "nicklist", args)
 	}
 
 	return nil

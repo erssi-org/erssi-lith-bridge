@@ -59,19 +59,59 @@ go build -o erssi-lith-bridge ./cmd/bridge
 ## Running
 
 ```bash
-./erssi-lith-bridge -erssi ws://localhost:9001 -listen :9000
+./erssi-lith-bridge
 ```
 
 ## Configuration
 
-```bash
-# Connect to erssi
-ERSSI_URL=ws://localhost:9001
-ERSSI_PASSWORD=yourpassword
+The bridge supports three configuration methods (in priority order):
 
-# Listen for Lith clients
-LISTEN_ADDR=:9000
+### 1. Command-line Flags (Highest Priority)
+
+```bash
+./erssi-lith-bridge \
+  -erssi wss://server.com:9111 \
+  -password yourpassword \
+  -listen :9000 \
+  -v
 ```
+
+### 2. Environment Variables
+
+```bash
+export ERSSI_URL=wss://server.com:9111
+export ERSSI_PASSWORD=yourpassword
+export LISTEN_ADDR=:9000
+export VERBOSE=true
+./erssi-lith-bridge
+```
+
+### 3. .env File (Recommended)
+
+```bash
+# Copy example and edit
+cp .env.example .env
+nano .env
+```
+
+`.env` file:
+```bash
+ERSSI_URL=wss://server.com:9111
+ERSSI_PASSWORD=yourpassword
+LISTEN_ADDR=:9000
+VERBOSE=true
+```
+
+Then simply run:
+```bash
+./erssi-lith-bridge
+```
+
+**Configuration Variables:**
+- `ERSSI_URL` / `-erssi` - erssi WebSocket URL (e.g., `wss://server:9111`)
+- `ERSSI_PASSWORD` / `-password` - erssi WebSocket password
+- `LISTEN_ADDR` / `-listen` - WeeChat protocol listen address (default: `:9000`)
+- `VERBOSE` / `-v` - Enable verbose/debug logging (default: `false`)
 
 ## Development
 

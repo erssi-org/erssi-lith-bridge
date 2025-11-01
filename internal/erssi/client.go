@@ -1,8 +1,10 @@
 package erssi
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,6 +13,13 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
 )
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
 
 // Client represents a connection to erssi fe-web WebSocket server
 type Client struct {
@@ -26,6 +35,7 @@ type Client struct {
 
 	// Internal state
 	authenticated bool
+	encryptionKey []byte // AES-256-GCM key
 	log           *logrus.Entry
 	done          chan struct{}
 }
@@ -44,12 +54,20 @@ func NewClient(cfg Config) *Client {
 		logger = logrus.New()
 	}
 
-	return &Client{
+	client := &Client{
 		url:      cfg.URL,
 		password: cfg.Password,
 		log:      logger.WithField("component", "erssi-client"),
 		done:     make(chan struct{}),
 	}
+
+	// Derive encryption key from password
+	if cfg.Password != "" {
+		client.encryptionKey = deriveKey(cfg.Password)
+		client.log.Debug("Encryption key derived from password")
+	}
+
+	return client
 }
 
 // OnMessage sets the message handler
@@ -75,15 +93,36 @@ func (c *Client) OnDisconnect(handler func(error)) {
 
 // Connect establishes connection to erssi WebSocket server
 func (c *Client) Connect() error {
+	// erssi requires password in query parameter: /?password=xxx
+	urlWithPassword := c.url
+	if c.password != "" {
+		separator := "?"
+		if strings.Contains(c.url, "?") {
+			separator = "&"
+		}
+		urlWithPassword = fmt.Sprintf("%s%spassword=%s", c.url, separator, c.password)
+	}
+
 	c.log.Infof("Connecting to erssi at %s", c.url)
+	c.log.Debugf("Full WebSocket URL with password: %s", urlWithPassword)
 
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 10 * time.Second,
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true, // erssi uses self-signed certs
+		},
 	}
 
-	conn, _, err := dialer.Dial(c.url, nil)
+	conn, resp, err := dialer.Dial(urlWithPassword, nil)
 	if err != nil {
+		if resp != nil {
+			c.log.Errorf("HTTP Response Status: %s", resp.Status)
+			c.log.Errorf("HTTP Response Headers: %v", resp.Header)
+		}
 		return fmt.Errorf("failed to connect: %w", err)
+	}
+	if resp != nil {
+		c.log.Debugf("WebSocket handshake successful, status: %s", resp.Status)
 	}
 
 	c.mu.Lock()
@@ -93,14 +132,8 @@ func (c *Client) Connect() error {
 	// Start read loop
 	go c.readLoop()
 
-	// Authenticate if password is set
-	if c.password != "" {
-		if err := c.authenticate(); err != nil {
-			c.Close()
-			return fmt.Errorf("authentication failed: %w", err)
-		}
-	}
-
+	// Password is already in URL query param, no separate auth needed
+	c.authenticated = true
 	c.log.Info("Connected to erssi")
 
 	// Call connected handler
@@ -160,7 +193,7 @@ func (c *Client) readLoop() {
 			return
 		}
 
-		_, data, err := conn.ReadMessage()
+		messageType, data, err := conn.ReadMessage()
 		if err != nil {
 			c.log.Errorf("Read error: %v", err)
 
@@ -174,19 +207,42 @@ func (c *Client) readLoop() {
 			return
 		}
 
+		// erssi sends binary frames for encrypted data
+		if messageType == websocket.BinaryMessage && c.encryptionKey != nil {
+			// Decrypt message
+			decrypted, err := decryptMessage(data, c.encryptionKey)
+			if err != nil {
+				c.log.Errorf("Failed to decrypt message: %v", err)
+				continue
+			}
+			data = decrypted
+		}
+
+		// Log raw JSON after decryption
+		c.log.Debugf("Raw JSON received: %s", string(data))
+
 		// Parse JSON message
 		var msg erssiproto.WebMessage
 		if err := json.Unmarshal(data, &msg); err != nil {
 			c.log.Errorf("Failed to parse message: %v", err)
+			c.log.Debugf("Raw data (first 100 bytes): %q", string(data[:min(100, len(data))]))
 			continue
 		}
 
-		c.log.Debugf("Received message type=%d from=%s target=%s", msg.Type, msg.Nick, msg.Target)
+		// Log parsed message structure
+		c.log.Debugf("Parsed message: type=%s, server_tag=%s, target=%s, nick=%s, text=%s, server=%s",
+			msg.Type, msg.ServerTag, msg.Target, msg.Nick, msg.Text, msg.Server)
+
+		c.log.Debugf("Received message type=%s from=%s target=%s", msg.Type, msg.Nick, msg.Target)
 
 		// Call message handler
 		c.mu.RLock()
 		if c.onMessage != nil {
-			go c.onMessage(&msg)
+			// IMPORTANT: Create a copy of the message to avoid race conditions
+			// The msg variable is reused in the loop, so we must copy it before
+			// passing to the goroutine
+			msgCopy := msg
+			go c.onMessage(&msgCopy)
 		}
 		c.mu.RUnlock()
 	}
@@ -206,7 +262,7 @@ func (c *Client) SendMessage(msg *erssiproto.WebMessage) error {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-	c.log.Debugf("Sending message type=%d", msg.Type)
+	c.log.Debugf("Sending message type=%s", msg.Type)
 
 	if err := c.conn.WriteMessage(websocket.TextMessage, data); err != nil {
 		return fmt.Errorf("failed to send message: %w", err)
@@ -230,7 +286,8 @@ func (c *Client) SendCommand(serverTag, target, text string) error {
 // RequestStateDump requests full state dump from erssi
 func (c *Client) RequestStateDump() error {
 	msg := &erssiproto.WebMessage{
-		Type: 16, // TODO: Define proper constant for state dump request
+		Type:   erssiproto.SyncServer,
+		Server: "*", // Request all servers
 	}
 
 	return c.SendMessage(msg)
@@ -239,7 +296,7 @@ func (c *Client) RequestStateDump() error {
 // RequestNicklist requests nicklist for a channel
 func (c *Client) RequestNicklist(serverTag, channel string) error {
 	msg := &erssiproto.WebMessage{
-		Type:      9, // Nicklist
+		Type:      erssiproto.Nicklist,
 		ServerTag: serverTag,
 		Target:    channel,
 	}
